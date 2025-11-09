@@ -1,7 +1,3 @@
-El siguiente resumen en formato Markdown tiene como objetivo proporcionar un contexto completo para una Inteligencia Artificial sobre el estudio en curso, su adaptación metodológica, y los datos esenciales utilizados.
-
----
-
 ## RESUMEN DEL CONTEXTO Y METODOLOGÍA DEL ESTUDIO ECONOMÉTRICO (2007-2022)
 
 ### 1. Contexto y Objetivos del Estudio
