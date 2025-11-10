@@ -1,0 +1,33 @@
+\begin{table}[htbp]\centering
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\caption{Modelo Logit: Determinantes del Crecimiento del Empleo}
+\begin{tabular}{l*{1}{c}}
+\hline\hline
+                    &\multicolumn{1}{c}{(1)}\\
+                    &\multicolumn{1}{c}{Crecimiento del Empleo (1=Sí, 0=No)}\\
+\hline
+Crecimiento del Empleo (1=Sí, 0=No)&                     \\
+L.Log(EXPORTACIONES)&       6.175\sym{***}\\
+                    &     (2.364)         \\
+[1em]
+L.TASA\_CREC\_EXPORT  &       0.026         \\
+                    &     (0.041)         \\
+[1em]
+L.Participación Export. No Petroleras (%)&       0.005         \\
+                    &     (0.031)         \\
+[1em]
+L.Log(SALARIO\_REAL) &      -1.921         \\
+                    &     (1.620)         \\
+[1em]
+L.Log(TCER)         &     -20.435\sym{**} \\
+                    &     (8.893)         \\
+[1em]
+Constant            &      49.979         \\
+                    &    (31.132)         \\
+\hline
+Observations        &          66         \\
+\hline\hline
+\multicolumn{2}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{2}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\
+\end{tabular}
+\end{table}

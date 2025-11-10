@@ -1,0 +1,1188 @@
+--------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\USER\Documents\ESTUDIO_EMPLEO_EXPORTACIONES\resultados/analisis_export
+> aciones_empleo.log
+  log type:  text
+ opened on:   9 Nov 2025, 20:15:11
+
+. 
+. /*==============================================================================
+>   1. CARGA Y PREPARACIÓN DE DATOS
+> ==============================================================================*/
+. 
+. * Carga de la base de datos
+. import delimited "Data\Data_OFICIAL_DELIMITADO.csv", varnames(1) clear
+(encoding automatically selected: UTF-8)
+(20 vars, 67 obs)
+
+. 
+. * Verificar estructura de datos
+. describe
+
+Contains data
+ Observations:            67                  
+    Variables:            20                  
+--------------------------------------------------------------------------------------------
+Variable      Storage   Display    Value
+    name         type    format    label      Variable label
+--------------------------------------------------------------------------------------------
+trimestre       str6    %9s                   TRIMESTRE
+año             int     %8.0g                 Año
+v3              str2    %9s                   Trimestre
+pet             float   %9.0g                 PET
+pea             float   %9.0g                 PEA
+empleo          float   %9.0g                 Empleo
+desempleo       float   %9.0g                 Desempleo
+tasa_empleo     float   %9.0g                 Tasa_Empleo
+tasa_desempleo  float   %9.0g                 Tasa_Desempleo
+exportaciones   float   %9.0g                 EXPORTACIONES
+exp_petroleras  float   %9.0g                 EXP_PETROLERAS
+exp_no_petrol~s float   %9.0g                 EXP_NO_PETROLERAS
+importaciones   float   %9.0g                 IMPORTACIONES
+balanza_comer~l float   %9.0g                 BALANZA_COMERCIAL
+tasa_crec_ex~rt float   %9.0g                 TASA_CREC_EXPORT
+tasa_crec~t_pet float   %9.0g                 TASA_CREC_EXPORT_PET
+tasa_crec~o_pet float   %9.0g                 TASA_CREC_EXPORT_NO_PET
+ipc             float   %9.0g                 IPC
+salario_real    float   %9.0g                 SALARIO_REAL
+tcer            float   %9.0g                 TCER
+--------------------------------------------------------------------------------------------
+Sorted by: 
+     Note: Dataset has changed since last saved.
+
+. summarize
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+   trimestre |          0
+         año |         67    2016.119    4.872689       2008       2024
+          v3 |          0
+         pet |         67    11.59531    1.094119   9.513649   13.29421
+         pea |         67    7.594312    .7960029   6.385421   8.672826
+-------------+---------------------------------------------------------
+      empleo |         67    7.243537    .7860574   6.005395   8.328464
+   desempleo |         67    .3507743      .05355    .273414    .463836
+ tasa_empleo |         67        62.4     1.85505       59.1         66
+tasa_desem~o |         67    4.652239     .797032        3.4        6.5
+exportacio~s |         67    5703.177    1415.831    2663.58    8876.57
+-------------+---------------------------------------------------------
+exp_petrol~s |         67    2323.361    784.4189     765.73    3951.25
+exp_no_pet~s |         67    3379.816    1340.936    1618.72    6669.93
+importacio~s |         67    5541.937    1196.087    3177.54    7860.44
+balanza_co~l |         67    161.2396    669.5172   -1498.79    2032.82
+tasa_crec~rt |         67    2.347209    7.912268   -16.1869     37.791
+-------------+---------------------------------------------------------
+tasa_c~t_pet |         67    12.77331    56.96061   -65.2272     345.75
+tasa_c~o_pet |         67    9.207072    10.05963   -12.4819    34.8827
+         ipc |         67    111.9472     12.0496      95.26     141.74
+salario_real |         67    366.1403    108.6951     176.99     539.08
+        tcer |         67    93.67913    5.358322    83.4843   106.3009
+
+. 
+. * Renombrar variables si es necesario (minúsculas)
+. rename *, lower
+  (all newnames==oldnames)
+
+. 
+. /*==============================================================================
+>   2. CONFIGURACIÓN DE SERIE DE TIEMPO
+> ==============================================================================*/
+. * Convertir tiempo_q a formato trimestral numérico
+. gen tiempo = quarterly(trimestre, "YQ") 
+
+. format tiempo %tq 
+
+. 
+. * Establecer datos de series de tiempo
+. tsset tiempo
+
+Time variable: tiempo, 2008q2 to 2024q4
+        Delta: 1 quarter
+
+. 
+. * Verificar que no hay gaps en la serie
+. tsreport
+
+Time variable: tiempo
+------------------------
+Starting period = 2008q2
+Ending period   = 2024q4
+Number of obs   =     67
+Number of gaps  =      0
+
+. 
+. * Etiquetar la variable de tiempo
+. label variable tiempo "Período trimestral"
+
+. 
+. /*==============================================================================
+>   3. TRANSFORMACIONES LOGARÍTMICAS
+> ==============================================================================*/
+. * Logaritmo de Exportaciones
+. gen log_exportaciones = ln(exportaciones)
+
+. label variable log_exportaciones "Log(EXPORTACIONES)"
+
+. 
+. * Logaritmo de Salario Real
+. gen log_salario_real = ln(salario_real)
+
+. label variable log_salario_real "Log(SALARIO_REAL)"
+
+. 
+. * Logaritmo de TCER
+. gen log_tcer = ln(tcer)
+
+. label variable log_tcer "Log(TCER)"
+
+. 
+. * Verificar si hay IED (puede tener valores negativos o cero)
+. quietly summarize balanza_comercial
+
+. scalar min_balanza = r(min)
+
+. 
+. * Para IED/Balanza Comercial: crear versión ajustada si hay valores negativos
+. gen balanza_ajustada = balanza_comercial - min_balanza + 1
+
+. gen log_balanza = ln(balanza_ajustada)
+
+. label variable log_balanza "Log(BALANZA_COMERCIAL ajustada)"
+
+. 
+. * Calcular participación de exportaciones no petroleras
+. gen part_no_petro = (exp_no_petroleras / exportaciones) * 100
+
+. label variable part_no_petro "Participación Export. No Petroleras (%)"
+
+. 
+. /*==============================================================================
+>   4. CREACIÓN DE VARIABLE DEPENDIENTE BINARIA
+> ==============================================================================*/
+. * Generar cambio en Tasa de Empleo
+. gen delta_tasa_empleo = D.tasa_empleo
+(1 missing value generated)
+
+. label variable delta_tasa_empleo "Cambio en Tasa de Empleo"
+
+. 
+. * Crear variable binaria: 1 si aumenta el empleo, 0 si no
+. gen crecimiento_empleo = (delta_tasa_empleo > 0 & delta_tasa_empleo != .)
+
+. replace crecimiento_empleo = . if delta_tasa_empleo == .
+(1 real change made, 1 to missing)
+
+. label variable crecimiento_empleo "Crecimiento del Empleo (1=Sí, 0=No)"
+
+. 
+. * Estadísticas descriptivas de la variable dependiente
+. tabulate crecimiento_empleo, missing
+
+Crecimiento |
+ del Empleo |
+     (1=Sí, |
+      0=No) |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |         38       56.72       56.72
+          1 |         28       41.79       98.51
+          . |          1        1.49      100.00
+------------+-----------------------------------
+      Total |         67      100.00
+
+. summarize delta_tasa_empleo, detail
+
+                  Cambio en Tasa de Empleo
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%    -2.200001      -2.200001
+ 5%    -1.700001      -1.799999
+10%         -1.5      -1.700005       Obs                  66
+25%    -.7999992      -1.700001       Sum of wgt.          66
+
+50%    -.1999989                      Mean          -.0560606
+                        Largest       Std. dev.      1.019975
+75%     .5999985       1.800003
+90%     1.299999       1.800003       Variance       1.040348
+95%     1.800003              2       Skewness       .0624344
+99%     2.100002       2.100002       Kurtosis       2.389152
+
+. 
+. /*==============================================================================
+>   CRITERIO 1: ANÁLISIS DE RAÍCES UNITARIAS EN NIVELES
+> ==============================================================================*/
+. * Prueba ADF para LOG_EXPORTACIONES (niveles)
+. dfuller log_exportaciones, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: log_exportacio~s                 Number of obs  = 62
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -2.536       -3.563       -2.920       -2.595
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.1070.
+
+Regression table
+-----------------------------------------------------------------------------------
+D.                |
+log_exportaciones | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+------------------+----------------------------------------------------------------
+log_exportaciones |
+              L1. |  -.1433702   .0565359    -2.54   0.014    -.2566252   -.0301152
+              LD. |   .1330653   .1420096     0.94   0.353    -.1514141    .4175448
+             L2D. |   .0699586    .138023     0.51   0.614    -.2065347    .3464518
+             L3D. |  -.0255939   .1180669    -0.22   0.829    -.2621103    .2109226
+             L4D. |   .1021362   .1176207     0.87   0.389    -.1334864    .3377588
+                  |
+            _cons |   1.243686   .4875322     2.55   0.014     .2670415     2.22033
+-----------------------------------------------------------------------------------
+
+. 
+. * Prueba ADF para LOG_SALARIO_REAL (niveles)
+. dfuller log_salario_real, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: log_salario_real                 Number of obs  = 62
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -2.217       -3.563       -2.920       -2.595
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.2000.
+
+Regression table
+----------------------------------------------------------------------------------
+D.               |
+log_salario_real | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-----------------+----------------------------------------------------------------
+log_salario_real |
+             L1. |  -.1066033   .0480793    -2.22   0.031    -.2029176    -.010289
+             LD. |  -.3052545   .1306002    -2.34   0.023    -.5668782   -.0436309
+            L2D. |  -.5534019    .129958    -4.26   0.000    -.8137391   -.2930647
+            L3D. |  -.2757257   .1318006    -2.09   0.041     -.539754   -.0116974
+            L4D. |   .3077708   .1299433     2.37   0.021     .0474631    .5680784
+                 |
+           _cons |   .6493901   .2831084     2.29   0.026     .0822557    1.216524
+----------------------------------------------------------------------------------
+
+. 
+. * Prueba ADF para LOG_TCER (niveles)
+. dfuller log_tcer, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: log_tcer                         Number of obs  = 62
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -0.917       -3.563       -2.920       -2.595
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.7823.
+
+Regression table
+------------------------------------------------------------------------------
+  D.log_tcer | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+    log_tcer |
+         L1. |  -.0495318   .0540079    -0.92   0.363    -.1577226     .058659
+         LD. |   .1961856   .1395023     1.41   0.165     -.083271    .4756423
+        L2D. |   -.248383     .13885    -1.79   0.079     -.526533    .0297669
+        L3D. |  -.0585149   .1246808    -0.47   0.641    -.3082805    .1912507
+        L4D. |   .0614742    .120781     0.51   0.613    -.1804793    .3034277
+             |
+       _cons |   .2255216   .2447663     0.92   0.361    -.2648043    .7158474
+------------------------------------------------------------------------------
+
+. 
+. * Prueba ADF para TASA_CREC_EXPORT (niveles)
+. dfuller tasa_crec_export, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: tasa_crec_export                 Number of obs  = 62
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -3.440       -3.563       -2.920       -2.595
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0097.
+
+Regression table
+----------------------------------------------------------------------------------
+D.               |
+tasa_crec_export | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-----------------+----------------------------------------------------------------
+tasa_crec_export |
+             L1. |    -.75428   .2192558    -3.44   0.001    -1.193502   -.3150579
+             LD. |   .1878779   .1900371     0.99   0.327    -.1928123     .568568
+            L2D. |   .1666641   .1719516     0.97   0.337    -.1777964    .5111246
+            L3D. |    .170848     .14849     1.15   0.255    -.1266131    .4683091
+            L4D. |  -.0542931   .1296075    -0.42   0.677    -.3139281    .2053419
+                 |
+           _cons |   1.846694   1.015006     1.82   0.074    -.1866075    3.879995
+----------------------------------------------------------------------------------
+
+. 
+. * Prueba ADF para PART_NO_PETRO (niveles)
+. dfuller part_no_petro, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: part_no_petro                    Number of obs  = 62
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -0.710       -3.563       -2.920       -2.595
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.8443.
+
+Regression table
+-------------------------------------------------------------------------------
+D.            |
+part_no_petro | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+part_no_petro |
+          L1. |   -.034438   .0485337    -0.71   0.481    -.1316627    .0627868
+          LD. |  -.0799486   .1356161    -0.59   0.558    -.3516204    .1917231
+         L2D. |  -.1170938   .1275517    -0.92   0.363    -.3726107     .138423
+         L3D. |  -.1171198   .1118082    -1.05   0.299    -.3410985    .1068589
+         L4D. |   .0457107   .1124396     0.41   0.686    -.1795328    .2709543
+              |
+        _cons |   2.568774   2.880113     0.89   0.376    -3.200786    8.338334
+-------------------------------------------------------------------------------
+
+. 
+. /*==============================================================================
+>   CRITERIO 2: PRUEBAS ADF EN PRIMERAS DIFERENCIAS
+> ==============================================================================*/
+. * Generar primeras diferencias
+. gen d_log_exportaciones = D.log_exportaciones
+(1 missing value generated)
+
+. gen d_log_salario_real = D.log_salario_real
+(1 missing value generated)
+
+. gen d_log_tcer = D.log_tcer
+(1 missing value generated)
+
+. gen d_tasa_crec_export = D.tasa_crec_export
+(1 missing value generated)
+
+. gen d_part_no_petro = D.part_no_petro
+(1 missing value generated)
+
+. 
+. * Prueba ADF en primeras diferencias
+. dfuller d_log_exportaciones, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: d_log_exportac~s                 Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -3.013       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0337.
+
+Regression table
+-------------------------------------------------------------------------------------
+D.                  |
+d_log_exportaciones | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+--------------------+----------------------------------------------------------------
+d_log_exportaciones |
+                L1. |  -.9480786    .314645    -3.01   0.004    -1.578641    -.317516
+                LD. |   .0037861   .2734855     0.01   0.989    -.5442912    .5518633
+               L2D. |    .046336   .2090336     0.22   0.825    -.3725768    .4652487
+               L3D. |   .0097901   .1569762     0.06   0.950    -.3047973    .3243774
+               L4D. |   .0380839   .1206008     0.32   0.753    -.2036055    .2797732
+                    |
+              _cons |   .0059728   .0136707     0.44   0.664    -.0214239    .0333694
+-------------------------------------------------------------------------------------
+
+. 
+. dfuller d_log_salario_real, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: d_log_salario_~l                 Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -2.772       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0623.
+
+Regression table
+------------------------------------------------------------------------------------
+D.                 |
+d_log_salario_real | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-------------------+----------------------------------------------------------------
+d_log_salario_real |
+               L1. |  -1.406334   .5072714    -2.77   0.008    -2.422928    -.389739
+               LD. |  -.0073995   .4539532    -0.02   0.987     -.917142    .9023431
+              L2D. |  -.5026771   .3459433    -1.45   0.152    -1.195963    .1906088
+              L3D. |  -.6378348   .2282651    -2.79   0.007    -1.095288   -.1803813
+              L4D. |  -.2246404   .1434825    -1.57   0.123    -.5121858     .062905
+                   |
+             _cons |    .015083   .0157053     0.96   0.341     -.016391    .0465571
+------------------------------------------------------------------------------------
+
+. 
+. dfuller d_log_tcer, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: d_log_tcer                       Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -3.601       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0057.
+
+Regression table
+------------------------------------------------------------------------------
+D.d_log_tcer | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+  d_log_tcer |
+         L1. |  -1.077904   .2993314    -3.60   0.001    -1.677777   -.4780301
+         LD. |   .2400401   .2564561     0.94   0.353    -.2739095    .7539897
+        L2D. |  -.0255074   .2058036    -0.12   0.902    -.4379469    .3869322
+        L3D. |  -.0507386   .1481093    -0.34   0.733    -.3475562     .246079
+        L4D. |   .0034542   .1200364     0.03   0.977    -.2371041    .2440125
+             |
+       _cons |   .0006485   .0026643     0.24   0.809    -.0046908    .0059879
+------------------------------------------------------------------------------
+
+. 
+. dfuller d_tasa_crec_export, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: d_tasa_crec_ex~t                 Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -6.250       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0000.
+
+Regression table
+------------------------------------------------------------------------------------
+D.                 |
+d_tasa_crec_export | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-------------------+----------------------------------------------------------------
+d_tasa_crec_export |
+               L1. |  -2.593429   .4149674    -6.25   0.000    -3.425042   -1.761815
+               LD. |   1.187851    .347034     3.42   0.001     .4923789    1.883322
+              L2D. |   .8935323   .2808509     3.18   0.002     .3306946     1.45637
+              L3D. |   .6489855   .2006844     3.23   0.002      .246805    1.051166
+              L4D. |   .2677032   .1236252     2.17   0.035     .0199528    .5154537
+                   |
+             _cons |   .3428883   .9642977     0.36   0.724    -1.589608    2.275384
+------------------------------------------------------------------------------------
+
+. 
+. dfuller d_part_no_petro, lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: d_part_no_petro                  Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -3.801       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0029.
+
+Regression table
+---------------------------------------------------------------------------------
+D.              |
+d_part_no_petro | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+----------------+----------------------------------------------------------------
+d_part_no_petro |
+            L1. |  -1.327529   .3492663    -3.80   0.000    -2.027475    -.627584
+            LD. |   .2012767   .3024869     0.67   0.509    -.4049206    .8074739
+           L2D. |   .0789785   .2306983     0.34   0.733    -.3833512    .5413083
+           L3D. |  -.0265744   .1630405    -0.16   0.871    -.3533149    .3001662
+           L4D. |   .0141773    .113015     0.13   0.901    -.2123098    .2406645
+                |
+          _cons |   .6035829   .5898491     1.02   0.311    -.5785013    1.785667
+---------------------------------------------------------------------------------
+
+. 
+. 
+. /*==============================================================================
+>   CRITERIO 3: ESTIMACIÓN DEL MODELO LOGIT
+> ==============================================================================*/
+. * Modelo Logit con rezagos (capturando dinámica de corto plazo)
+. logit crecimiento_empleo L.log_exportaciones L.tasa_crec_export L.part_no_petro ///
+>       L.log_salario_real L.log_tcer, nolog
+
+Logistic regression                                     Number of obs =     66
+                                                        LR chi2(5)    =  11.78
+                                                        Prob > chi2   = 0.0379
+Log likelihood = -39.097041                             Pseudo R2     = 0.1309
+
+------------------------------------------------------------------------------------
+crecimiento_empleo | Coefficient  Std. err.      z    P>|z|     [95% conf. interval]
+-------------------+----------------------------------------------------------------
+ log_exportaciones |
+               L1. |   6.175029   2.363512     2.61   0.009     1.542631    10.80743
+                   |
+  tasa_crec_export |
+               L1. |   .0255012   .0412898     0.62   0.537    -.0554253    .1064278
+                   |
+     part_no_petro |
+               L1. |   .0048688   .0308719     0.16   0.875    -.0556391    .0653767
+                   |
+  log_salario_real |
+               L1. |  -1.920919   1.620042    -1.19   0.236    -5.096144    1.254305
+                   |
+          log_tcer |
+               L1. |  -20.43505   8.893266    -2.30   0.022    -37.86553   -3.004572
+                   |
+             _cons |    49.9794   31.13199     1.61   0.108    -11.03818     110.997
+------------------------------------------------------------------------------------
+
+. 
+. * Guardar estimaciones
+. estimates store modelo_logit
+
+. 
+. * Reporte detallado
+. logit, or
+
+Logistic regression                                     Number of obs =     66
+                                                        LR chi2(5)    =  11.78
+                                                        Prob > chi2   = 0.0379
+Log likelihood = -39.097041                             Pseudo R2     = 0.1309
+
+------------------------------------------------------------------------------------
+crecimiento_empleo | Odds ratio   Std. err.      z    P>|z|     [95% conf. interval]
+-------------------+----------------------------------------------------------------
+ log_exportaciones |
+               L1. |   480.5968   1135.896     2.61   0.009     4.676879    49386.19
+                   |
+  tasa_crec_export |
+               L1. |   1.025829   .0423563     0.62   0.537     .9460827    1.112298
+                   |
+     part_no_petro |
+               L1. |   1.004881   .0310226     0.16   0.875     .9458805    1.067561
+                   |
+  log_salario_real |
+               L1. |   .1464722   .2372912    -1.19   0.236     .0061203    3.505402
+                   |
+          log_tcer |
+               L1. |   1.33e-09   1.19e-08    -2.30   0.022     3.59e-17      .04956
+                   |
+             _cons |   5.08e+21   1.58e+23     1.61   0.108     .0000161    1.60e+48
+------------------------------------------------------------------------------------
+Note: _cons estimates baseline odds.
+
+. 
+. /*==============================================================================
+>   CRITERIO 4: SIGNIFICANCIA DE LOS COEFICIENTES
+> ==============================================================================*/
+. 
+. display _newline(2) "========================================" _newline ///
+>                    "CRITERIO 4: TESTS DE SIGNIFICANCIA" _newline ///
+>                    "========================================" _newline
+
+
+========================================
+CRITERIO 4: TESTS DE SIGNIFICANCIA
+========================================
+
+
+. 
+. * Test de Wald para significancia individual (ya reportado en la tabla del modelo)
+. display _newline ">>> Test de Wald Individual (ver tabla anterior)" _newline
+
+>>> Test de Wald Individual (ver tabla anterior)
+
+
+. 
+. * Test de Razón de Verosimilitud (LR) para significancia conjunta
+. * Primero estimamos modelo nulo (solo constante)
+. display _newline ">>> Estimando Modelo Nulo (solo constante)..." _newline
+
+>>> Estimando Modelo Nulo (solo constante)...
+
+
+. quietly logit crecimiento_empleo
+
+. estimates store modelo_nulo
+
+. 
+. * Restaurar modelo completo
+. estimates restore modelo_logit
+(results modelo_logit are active now)
+
+. 
+. * Test LR: comparar modelo completo vs modelo nulo
+. display _newline ">>> Test de Razón de Verosimilitud (LR)" _newline
+
+>>> Test de Razón de Verosimilitud (LR)
+
+
+. lrtest modelo_logit modelo_nulo
+
+Likelihood-ratio test
+Assumption: modelo_nulo nested within modelo_logit
+
+ LR chi2(5) =  11.78
+Prob > chi2 = 0.0379
+
+. 
+. * Interpretación automática
+. display _newline "Interpretación:" _newline ///
+>         "H0: Todos los coeficientes (excepto constante) = 0" _newline ///
+>         "Si p-value < 0.05 → Rechazamos H0 → El modelo completo es significativamente mejo
+> r"
+
+Interpretación:
+H0: Todos los coeficientes (excepto constante) = 0
+Si p-value < 0.05 → Rechazamos H0 → El modelo completo es significativamente mejor
+
+. 
+. * Pseudo R-squared y clasificación
+. display _newline ">>> Capacidad Clasificatoria del Modelo" _newline
+
+>>> Capacidad Clasificatoria del Modelo
+
+
+. estat classification
+
+Logistic model for crecimiento_empleo
+
+              -------- True --------
+Classified |         D            ~D  |      Total
+-----------+--------------------------+-----------
+     +     |        14             9  |         23
+     -     |        14            29  |         43
+-----------+--------------------------+-----------
+   Total   |        28            38  |         66
+
+Classified + if predicted Pr(D) >= .5
+True D defined as crecimiento_empleo != 0
+--------------------------------------------------
+Sensitivity                     Pr( +| D)   50.00%
+Specificity                     Pr( -|~D)   76.32%
+Positive predictive value       Pr( D| +)   60.87%
+Negative predictive value       Pr(~D| -)   67.44%
+--------------------------------------------------
+False + rate for true ~D        Pr( +|~D)   23.68%
+False - rate for true D         Pr( -| D)   50.00%
+False + rate for classified +   Pr(~D| +)   39.13%
+False - rate for classified -   Pr( D| -)   32.56%
+--------------------------------------------------
+Correctly classified                        65.15%
+--------------------------------------------------
+
+. 
+. /*==============================================================================
+>   CRITERIO 5: DIAGNÓSTICO DEL MODELO
+> ==============================================================================*/
+. * a) Test de Bondad de Ajuste (Hosmer-Lemeshow)
+. estat gof, group(10) table
+note: obs collapsed on 10 quantiles of estimated probabilities.
+
+Goodness-of-fit test after logistic model
+Variable: crecimiento_empleo
+
+  Table collapsed on quantiles of estimated probabilities
+  +--------------------------------------------------------+
+  | Group |   Prob | Obs_1 | Exp_1 | Obs_0 | Exp_0 | Total |
+  |-------+--------+-------+-------+-------+-------+-------|
+  |     1 | 0.1010 |     0 |   0.4 |     7 |   6.6 |     7 |
+  |     2 | 0.2870 |     1 |   1.5 |     6 |   5.5 |     7 |
+  |     3 | 0.3203 |     2 |   1.9 |     4 |   4.1 |     6 |
+  |     4 | 0.3822 |     3 |   2.5 |     4 |   4.5 |     7 |
+  |     5 | 0.4434 |     4 |   2.5 |     2 |   3.5 |     6 |
+  |-------+--------+-------+-------+-------+-------+-------|
+  |     6 | 0.4755 |     3 |   3.2 |     4 |   3.8 |     7 |
+  |     7 | 0.5325 |     4 |   3.5 |     3 |   3.5 |     7 |
+  |     8 | 0.5970 |     3 |   3.4 |     3 |   2.6 |     6 |
+  |     9 | 0.7082 |     4 |   4.5 |     3 |   2.5 |     7 |
+  |    10 | 0.7963 |     4 |   4.6 |     2 |   1.4 |     6 |
+  +--------------------------------------------------------+
+
+ Number of observations =     66
+       Number of groups =     10
+Hosmer–Lemeshow chi2(8) =   3.09
+            Prob > chi2 = 0.9287
+
+. 
+. * b) Evaluación de Multicolinealidad (VIF)
+. * Nota: para logit usamos regresión auxiliar
+. quietly reg L.log_exportaciones L.tasa_crec_export L.part_no_petro ///
+>            L.log_salario_real L.log_tcer
+
+. vif
+
+    Variable |       VIF       1/VIF  
+-------------+----------------------
+log_salari~l |
+         L1. |      1.92    0.520372
+part_no_pe~o |
+         L1. |      1.88    0.531141
+    log_tcer |
+         L1. |      1.20    0.835905
+tasa_crec~rt |
+         L1. |      1.16    0.863859
+-------------+----------------------
+    Mean VIF |      1.54
+
+. 
+. * c) Capacidad Predictiva - Matriz de Confusión
+. estimates restore modelo_logit
+(results modelo_logit are active now)
+
+. estat classification
+
+Logistic model for crecimiento_empleo
+
+              -------- True --------
+Classified |         D            ~D  |      Total
+-----------+--------------------------+-----------
+     +     |        14             9  |         23
+     -     |        14            29  |         43
+-----------+--------------------------+-----------
+   Total   |        28            38  |         66
+
+Classified + if predicted Pr(D) >= .5
+True D defined as crecimiento_empleo != 0
+--------------------------------------------------
+Sensitivity                     Pr( +| D)   50.00%
+Specificity                     Pr( -|~D)   76.32%
+Positive predictive value       Pr( D| +)   60.87%
+Negative predictive value       Pr(~D| -)   67.44%
+--------------------------------------------------
+False + rate for true ~D        Pr( +|~D)   23.68%
+False - rate for true D         Pr( -| D)   50.00%
+False + rate for classified +   Pr(~D| +)   39.13%
+False - rate for classified -   Pr( D| -)   32.56%
+--------------------------------------------------
+Correctly classified                        65.15%
+--------------------------------------------------
+
+. 
+. * d) Curva ROC y Área Bajo la Curva
+. lroc, nograph
+
+Logistic model for crecimiento_empleo
+
+Number of observations =       66
+Area under ROC curve   =   0.7133
+
+. 
+. 
+. /*==============================================================================
+>   CRITERIO 6: ANÁLISIS DE RESIDUOS
+> ==============================================================================*/
+. 
+. display _newline(2) "========================================" _newline ///
+>                    "CRITERIO 6: ANÁLISIS DE RESIDUOS" _newline ///
+>                    "========================================" _newline
+
+
+========================================
+CRITERIO 6: ANÁLISIS DE RESIDUOS
+========================================
+
+
+. 
+. * Eliminar variables de predicción previas si existen
+. capture drop prob_empleo
+
+. capture drop residuos_respuesta
+
+. capture drop residuos_pearson
+
+. capture drop residuos_deviance
+
+. 
+. * Restaurar modelo
+. quietly estimates restore modelo_logit
+
+. 
+. * 1. Predecir probabilidades (esto SÍ funciona)
+. predict prob_empleo if e(sample), pr
+(1 missing value generated)
+
+. label variable prob_empleo "Probabilidad predicha de crecimiento"
+
+. 
+. * 2. Calcular RESIDUOS DE RESPUESTA manualmente
+. * Residuos = Observado - Predicho
+. gen residuos_respuesta = crecimiento_empleo - prob_empleo if e(sample)
+(1 missing value generated)
+
+. label variable residuos_respuesta "Residuos de respuesta"
+
+. 
+. * 3. Calcular RESIDUOS DE PEARSON manualmente
+. * Fórmula: (y - p) / sqrt(p * (1-p))
+. gen residuos_pearson = (crecimiento_empleo - prob_empleo) / ///
+>                         sqrt(prob_empleo * (1 - prob_empleo)) if e(sample)
+(1 missing value generated)
+
+. label variable residuos_pearson "Residuos de Pearson"
+
+. 
+. * 4. Calcular RESIDUOS DEVIANCE manualmente
+. * Fórmula para Logit Binomial:
+. * d = sign(y - p) * sqrt(-2 * [y*ln(p) + (1-y)*ln(1-p)])
+. gen residuos_deviance = .
+(67 missing values generated)
+
+. replace residuos_deviance = sqrt(-2 * log(prob_empleo)) ///
+>     if crecimiento_empleo == 1 & e(sample)
+(28 real changes made)
+
+. replace residuos_deviance = sqrt(-2 * log(1 - prob_empleo)) ///
+>     if crecimiento_empleo == 0 & e(sample)
+(38 real changes made)
+
+. replace residuos_deviance = -residuos_deviance ///
+>     if crecimiento_empleo < prob_empleo & e(sample)
+(38 real changes made)
+
+. label variable residuos_deviance "Residuos de deviance"
+
+. 
+. * Estadísticas descriptivas de residuos
+. display _newline ">>> Estadísticas Descriptivas de Residuos" _newline
+
+>>> Estadísticas Descriptivas de Residuos
+
+
+. summarize residuos_respuesta residuos_pearson residuos_deviance if e(sample)
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+residuos_r~a |         66    1.55e-09    .4601394   -.794431   .7130113
+residuos_p~n |         66    -.025149    .9710932  -1.965845   1.576216
+residuos_d~e |         66   -.0418817    1.095995  -1.778749   1.580071
+
+. 
+. * Prueba de Normalidad (Jarque-Bera) en residuos de Pearson
+. display _newline ">>> Test de Normalidad de Residuos de Pearson (Jarque-Bera)" _newline
+
+>>> Test de Normalidad de Residuos de Pearson (Jarque-Bera)
+
+
+. summarize residuos_pearson if e(sample), detail
+
+                     Residuos de Pearson
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%    -1.965845      -1.965845
+ 5%    -1.309661        -1.7317
+10%    -1.197999       -1.48693       Obs                  66
+25%    -.8651554      -1.309661       Sum of wgt.          66
+
+50%    -.3032716                      Mean           -.025149
+                        Largest       Std. dev.      .9710932
+75%     .9370497       1.329995
+90%     1.220192        1.46272       Variance        .943022
+95%     1.329995       1.495573       Skewness       .0757757
+99%     1.576216       1.576216       Kurtosis       1.650366
+
+. sktest residuos_pearson
+
+Skewness and kurtosis tests for normality
+                                                             ----- Joint test -----
+        Variable |       Obs   Pr(skewness)   Pr(kurtosis)   Adj chi2(2)  Prob>chi2
+-----------------+-----------------------------------------------------------------
+residuos_pearson |        66         0.7840         0.0000         25.55     0.0000
+
+. 
+. * Prueba de Normalidad en residuos de respuesta
+. display _newline ">>> Test de Normalidad de Residuos de Respuesta" _newline
+
+>>> Test de Normalidad de Residuos de Respuesta
+
+
+. sktest residuos_respuesta
+
+Skewness and kurtosis tests for normality
+                                                               ----- Joint test -----
+          Variable |       Obs   Pr(skewness)   Pr(kurtosis)   Adj chi2(2)  Prob>chi2
+-------------------+-----------------------------------------------------------------
+residuos_respuesta |        66         0.7903         0.0000         38.92     0.0000
+
+. 
+. * Gráfico 1: Residuos de Pearson vs Tiempo
+. scatter residuos_pearson tiempo if e(sample), yline(0) ///
+>     title("Residuos de Pearson vs Tiempo") ///
+>     ytitle("Residuos de Pearson") xtitle("Período Trimestral") ///
+>     mcolor(navy) msize(medium)
+
+. graph export "resultados/graficos/residuos_pearson.pdf", replace
+file resultados/graficos/residuos_pearson.pdf saved as PDF format
+
+. 
+. * Gráfico 2: Residuos de Respuesta vs Tiempo
+. scatter residuos_respuesta tiempo if e(sample), yline(0) ///
+>     title("Residuos de Respuesta vs Tiempo") ///
+>     ytitle("Residuos de Respuesta") xtitle("Período Trimestral") ///
+>     mcolor(maroon) msize(medium)
+
+. graph export "resultados/graficos/residuos_respuesta.pdf", replace
+file resultados/graficos/residuos_respuesta.pdf saved as PDF format
+
+. 
+. * Gráfico 3: Residuos Deviance vs Tiempo
+. scatter residuos_deviance tiempo if e(sample), yline(0) ///
+>     title("Residuos Deviance vs Tiempo") ///
+>     ytitle("Residuos Deviance") xtitle("Período Trimestral") ///
+>     mcolor(forest_green) msize(medium)
+
+. graph export "resultados/graficos/residuos_deviance.pdf", replace
+file resultados/graficos/residuos_deviance.pdf saved as PDF format
+
+. 
+. * Gráfico 4: Histograma de Residuos de Pearson
+. histogram residuos_pearson if e(sample), normal ///
+>     title("Distribución de Residuos de Pearson") ///
+>     xtitle("Residuos de Pearson") ///
+>     fcolor(navy%30) lcolor(navy)
+(bin=8, start=-1.9658452, width=.44275767)
+
+. graph export "resultados/graficos/hist_residuos_pearson.pdf", replace
+file resultados/graficos/hist_residuos_pearson.pdf saved as PDF format
+
+. 
+. * Gráfico 5: Histograma de Residuos de Respuesta
+. histogram residuos_respuesta if e(sample), normal ///
+>     title("Distribución de Residuos de Respuesta") ///
+>     xtitle("Residuos de Respuesta") ///
+>     fcolor(maroon%30) lcolor(maroon)
+(bin=8, start=-.79443103, width=.18843029)
+
+. graph export "resultados/graficos/hist_residuos_respuesta.pdf", replace
+file resultados/graficos/hist_residuos_respuesta.pdf saved as PDF format
+
+. 
+. * Gráfico 6: Q-Q plot para normalidad
+. qnorm residuos_pearson if e(sample), ///
+>     title("Q-Q Plot: Residuos de Pearson") ///
+>     mcolor(navy)
+
+. graph export "resultados/graficos/qqplot_pearson.pdf", replace
+file resultados/graficos/qqplot_pearson.pdf saved as PDF format
+
+. 
+. * Prueba de Autocorrelación en residuos
+. display _newline ">>> Análisis de Autocorrelación en Residuos" _newline
+
+>>> Análisis de Autocorrelación en Residuos
+
+
+. * Correlación serial de primer orden
+. quietly correlate residuos_pearson L.residuos_pearson if e(sample)
+
+. display "Correlación de primer orden: " r(rho)
+Correlación de primer orden: -.13214278
+
+. 
+. * Estadística de Durbin-Watson aproximada
+. * DW ≈ 2(1 - ρ)
+. scalar rho_1 = r(rho)
+
+. scalar dw_aprox = 2 * (1 - rho_1)
+
+. display "Estadística Durbin-Watson (aproximada): " dw_aprox
+Estadística Durbin-Watson (aproximada): 2.2642856
+
+. display "Interpretación: DW ≈ 2 indica ausencia de autocorrelación"
+Interpretación: DW ≈ 2 indica ausencia de autocorrelación
+
+. 
+. /*==============================================================================
+>   CRITERIO 7: RAÍZ UNITARIA EN RESIDUOS
+> ==============================================================================*/
+. * Prueba ADF en residuos de Pearson
+. dfuller residuos_pearson if e(sample), lags(4) regress
+
+Augmented Dickey–Fuller test for unit root
+
+Variable: residuos_pearson                 Number of obs  = 61
+                                           Number of lags =  4
+
+H0: Random walk without drift, d = 0
+
+                                       Dickey–Fuller
+                   Test      -------- critical value ---------
+              statistic           1%           5%          10%
+--------------------------------------------------------------
+ Z(t)            -4.548       -3.565       -2.921       -2.596
+--------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0002.
+
+Regression table
+----------------------------------------------------------------------------------
+D.               |
+residuos_pearson | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-----------------+----------------------------------------------------------------
+residuos_pearson |
+             L1. |  -1.405868   .3091179    -4.55   0.000    -2.025354   -.7863816
+             LD. |   .4313088   .2781095     1.55   0.127    -.1260351    .9886527
+            L2D. |   .3555203   .2261047     1.57   0.122    -.0976037    .8086443
+            L3D. |   .1185879   .1867868     0.63   0.528    -.2557412    .4929171
+            L4D. |   .3377043   .1310399     2.58   0.013     .0750945    .6003141
+                 |
+           _cons |  -.0130651   .1181001    -0.11   0.912    -.2497429    .2236128
+----------------------------------------------------------------------------------
+
+. 
+. * Interpretación: Si rechazo H0, los residuos son estacionarios I(0) ✓
+. 
+. /*==============================================================================
+>   8. EFECTOS MARGINALES Y ANÁLISIS ADICIONAL
+> ==============================================================================*/
+. * Efectos marginales promedio
+. margins, dydx(*) atmeans
+
+Conditional marginal effects                                Number of obs = 66
+Model VCE: OIM
+
+Expression: Pr(crecimiento_empleo), predict()
+dy/dx wrt:  L.log_exportaciones L.tasa_crec_export L.part_no_petro L.log_salario_real
+            L.log_tcer
+At: L.log_exportaciones = 8.616967 (mean)
+    L.tasa_crec_export  = 2.173738 (mean)
+    L.part_no_petro     = 58.11946 (mean)
+    L.log_salario_real  =  5.85069 (mean)
+    L.log_tcer          = 4.537235 (mean)
+
+-----------------------------------------------------------------------------------
+                  |            Delta-method
+                  |      dy/dx   std. err.      z    P>|z|     [95% conf. interval]
+------------------+----------------------------------------------------------------
+log_exportaciones |
+              L1. |   1.474691   .5473305     2.69   0.007     .4019433    2.547439
+                  |
+ tasa_crec_export |
+              L1. |   .0060901   .0098714     0.62   0.537    -.0132575    .0254376
+                  |
+    part_no_petro |
+              L1. |   .0011628   .0073705     0.16   0.875    -.0132832    .0156087
+                  |
+ log_salario_real |
+              L1. |  -.4587449    .386564    -1.19   0.235    -1.216396    .2989066
+                  |
+         log_tcer |
+              L1. |  -4.880204   2.070565    -2.36   0.018    -8.938436   -.8219715
+-----------------------------------------------------------------------------------
+
+. 
+. * Efectos marginales en la media de cada variable
+. margins, dydx(L.log_exportaciones L.tasa_crec_export L.part_no_petro ///
+>               L.log_salario_real L.log_tcer)
+
+Average marginal effects                                    Number of obs = 66
+Model VCE: OIM
+
+Expression: Pr(crecimiento_empleo), predict()
+dy/dx wrt:  L.log_exportaciones L.tasa_crec_export L.part_no_petro L.log_salario_real
+            L.log_tcer
+
+-----------------------------------------------------------------------------------
+                  |            Delta-method
+                  |      dy/dx   std. err.      z    P>|z|     [95% conf. interval]
+------------------+----------------------------------------------------------------
+log_exportaciones |
+              L1. |   1.266745   .3880954     3.26   0.001     .5060921    2.027398
+                  |
+ tasa_crec_export |
+              L1. |   .0052313   .0083757     0.62   0.532    -.0111847    .0216474
+                  |
+    part_no_petro |
+              L1. |   .0009988    .006331     0.16   0.875    -.0114097    .0134072
+                  |
+ log_salario_real |
+              L1. |  -.3940573   .3190965    -1.23   0.217    -1.019475    .2313604
+                  |
+         log_tcer |
+              L1. |  -4.192046   1.553623    -2.70   0.007    -7.237091   -1.147001
+-----------------------------------------------------------------------------------
+
+. 
+. /*==============================================================================
+>   9. EXPORTACIÓN DE RESULTADOS
+> ==============================================================================*/
+. 
+. * Tabla de resultados del modelo
+. estimates restore modelo_logit
+(results modelo_logit are active now)
+
+. esttab using "resultados/tablas/modelo_logit.tex", ///
+>     replace b(3) se(3) star(* 0.10 ** 0.05 *** 0.01) ///
+>     label title("Modelo Logit: Determinantes del Crecimiento del Empleo")
+(output written to resultados/tablas/modelo_logit.tex)
+
+. 
+. * Resumen de pruebas ADF
+. log close
+      name:  <unnamed>
+       log:  C:\Users\USER\Documents\ESTUDIO_EMPLEO_EXPORTACIONES\resultados/analisis_export
+> aciones_empleo.log
+  log type:  text
+ closed on:   9 Nov 2025, 20:15:19
+--------------------------------------------------------------------------------------------
